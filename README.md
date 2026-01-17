@@ -1,4 +1,4 @@
-# 🎓 Red Hat OpenShift & Operator Framework Onboarding
+#  Red Hat OpenShift & Operator Framework Onboarding
 
 ## Complete Learning Path: From Zero to OpenShift Expert
 
@@ -6,7 +6,7 @@ Welcome! This repository contains a structured learning path to master OpenShift
 
 ---
 
-## 📊 Learning Path Overview
+##  Learning Path Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
@@ -37,7 +37,7 @@ Welcome! This repository contains a structured learning path to master OpenShift
 
 ---
 
-## 📁 Repository Structure
+##  Repository Structure
 
 ```
 REDHAT-OPENSHIFT-ONBOARDING/
@@ -59,7 +59,7 @@ REDHAT-OPENSHIFT-ONBOARDING/
 
 ---
 
-## 🎯 How to Use This Guide
+##  How to Use This Guide
 
 ### Step 1: Assess Your Current Level
 
@@ -77,9 +77,9 @@ REDHAT-OPENSHIFT-ONBOARDING/
 │                    Recommended Daily Schedule                            │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│   📖 Reading & Theory      : 30-45 minutes                              │
-│   💻 Hands-on Practice     : 45-60 minutes                              │
-│   📝 Notes & Documentation : 15-30 minutes                              │
+│    Reading & Theory      : 30-45 minutes                              │
+│    Hands-on Practice     : 45-60 minutes                              │
+│    Notes & Documentation : 15-30 minutes                              │
 │                                                                          │
 │   Total: 1.5-2 hours per day                                            │
 │                                                                          │
@@ -91,15 +91,15 @@ REDHAT-OPENSHIFT-ONBOARDING/
 ### Step 3: Practice, Practice, Practice!
 
 Each phase includes:
-- ✅ Concept explanations with real-life analogies
-- ✅ Hands-on commands to try
-- ✅ YAML examples you can apply
-- ✅ Practice labs
-- ✅ Quizzes to test understanding
+- Concept explanations with real-life analogies
+- Hands-on commands to try
+- YAML examples you can apply
+- Practice labs
+- Quizzes to test understanding
 
 ---
 
-## 📚 Phase Summaries
+##  Phase Summaries
 
 ### Phase 1: Foundations (2-3 weeks)
 **File**: `Phase1-Foundations/Phase1-Foundations-Study-Guide.md`
@@ -218,7 +218,7 @@ code .
 
 ---
 
-## 📈 Progress Tracking
+## Progress Tracking
 
 Use this checklist to track your progress:
 
@@ -289,7 +289,7 @@ Use this checklist to track your progress:
 
 ---
 
-## 🎓 Certification Path
+##  Certification Path
 
 After completing this learning path, you'll be prepared for:
 
@@ -302,9 +302,9 @@ After completing this learning path, you'll be prepared for:
 
 ---
 
-## 💡 Learning Tips
+##  Learning Tips
 
-### Do's ✅
+### Do's 
 1. **Practice daily** - Consistency is key
 2. **Break things** - Learn from failures
 3. **Take notes** - Document your learning
@@ -312,7 +312,7 @@ After completing this learning path, you'll be prepared for:
 5. **Read error messages** - They tell you what's wrong
 6. **Join communities** - Ask questions
 
-### Don'ts ❌
+### Don'ts 
 1. **Don't just read** - You must practice
 2. **Don't skip phases** - Build on foundations
 3. **Don't memorize** - Understand concepts
@@ -320,7 +320,7 @@ After completing this learning path, you'll be prepared for:
 
 ---
 
-## 🔗 Additional Resources
+##  Additional Resources
 
 ### Official Documentation
 - [Kubernetes Docs](https://kubernetes.io/docs/)
@@ -344,7 +344,7 @@ After completing this learning path, you'll be prepared for:
 
 ---
 
-## 📞 Getting Help
+##  Getting Help
 
 If you're stuck:
 
@@ -358,7 +358,7 @@ If you're stuck:
 
 ---
 
-## 🎉 Start Your Journey!
+##  Start Your Journey!
 
 Ready to begin? Open the first phase:
 
@@ -367,7 +367,7 @@ Ready to begin? Open the first phase:
 less Phase1-Foundations/Phase1-Foundations-Study-Guide.md
 ```
 
-**Good luck on your OpenShift journey! 🚀**
+**Good luck on your OpenShift journey! **
 
 ---
 
