@@ -927,6 +927,4 @@ oc get clusterspiffeid
 
 ---
 
-**Document Version:** 2.0  
-**Last Updated:** January 2026  
-**Tested On:** OpenShift 4.18, ZTWIM Operator v1.0.0 (GA)
+
