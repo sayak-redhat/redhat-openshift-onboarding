@@ -61,7 +61,7 @@ metadata:
   namespace: openshift-marketplace
 spec:
   sourceType: grpc
-  image: brew.registry.redhat.io/rh-osbs/iib:1091450
+  image: brew.registry.redhat.io/rh-osbs/iib:1091452
   displayName: Red Hat Brew Stage Catalog
   publisher: Red Hat
   updateStrategy:
