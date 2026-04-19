@@ -103,35 +103,37 @@ SPIRE Server supports only `sqlite3`, `postgres`, and `mysql`. Among AWS RDS eng
 
 ## Phase 0: Discover Cluster Information
 
-Fill in this table before proceeding. Every subsequent step references these values.
+Throughout this guide, placeholders like `<CLUSTER1_APP_DOMAIN>` appear in commands. Before you begin, gather these values for your environment using the methods below. The guide also uses shell variables (`${CLUSTER1_APP_DOMAIN}`) — these are set in Phase 3 Step 1 and Phase 4 Step 1.
 
-| Variable | How to Find | Your Value |
-|----------|------------|------------|
-| `KUBECONFIG1` | Path from install output | `__________________________` |
-| `KUBECONFIG2` | Path from install output | `__________________________` |
-| `CLUSTER1_APP_DOMAIN` | See Step 0.1 | `__________________________` |
-| `CLUSTER2_APP_DOMAIN` | See Step 0.1 | `__________________________` |
-| Cluster 1 VPC ID | See Step 0.2 | `vpc-___________________` |
-| Cluster 2 VPC ID | See Step 0.2 | `vpc-___________________` |
-| VPC CIDR | See Step 0.3 | `____.0.0.0/16` |
-| RDS 1 Endpoint | After Phase 1 | `__________________________` |
-| RDS 2 Endpoint | After Phase 1 | `__________________________` |
-| RDS Master Password | You set this | `__________________________` |
-| SPIRE DB User Password | You set this | `__________________________` |
+### Placeholders Used in This Guide
+
+| Placeholder | Description | Where You Get It |
+|-------------|-------------|-----------------|
+| `<KUBECONFIG1>` | Kubeconfig path for Cluster 1 | OpenShift install output: `export KUBECONFIG=...` |
+| `<KUBECONFIG2>` | Kubeconfig path for Cluster 2 | OpenShift install output: `export KUBECONFIG=...` |
+| `<CLUSTER1_APP_DOMAIN>` | Apps domain for Cluster 1 (e.g., `apps.mycluster1.example.com`) | Step 0.1 below |
+| `<CLUSTER2_APP_DOMAIN>` | Apps domain for Cluster 2 (e.g., `apps.mycluster2.example.com`) | Step 0.1 below |
+| `<CLUSTER1_VPC_ID>` | VPC ID where Cluster 1 runs (e.g., `vpc-0abc123...`) | Step 0.2 below |
+| `<CLUSTER2_VPC_ID>` | VPC ID where Cluster 2 runs (e.g., `vpc-0def456...`) | Step 0.2 below |
+| `<VPC_CIDR>` | CIDR block of the VPC (e.g., `10.0.0.0/16`) | Step 0.3 below |
+| `<RDS_ENDPOINT_C1>` | RDS endpoint for Cluster 1 (e.g., `spire-ds1.xxx.region.rds.amazonaws.com`) | After Phase 1 — from RDS Console → Connectivity & security |
+| `<RDS_ENDPOINT_C2>` | RDS endpoint for Cluster 2 | After Phase 1 — from RDS Console → Connectivity & security |
+| `<RDS_MASTER_PASSWORD>` | Master password you set when creating RDS | You choose this during RDS creation |
+| `<SPIRE_USER_PASSWORD>` | Password for the `spire_server` database user | You choose this in Phase 3 Step 3 |
 
 ### Step 0.1: Find Apps Domains
 
-The **apps domain** is the base domain for all OpenShift routes/ingress.
+The **apps domain** is the base domain for all OpenShift routes. You need it for trust domains, federation endpoints, and route hostnames.
 
-**Method A: From the install output**
+**From the install output:**
 
 ```
-INFO Access the OpenShift web-console here: https://console-openshift-console.apps.example.cluster.com
-                                                                           └────────────────────────┘
+INFO Access the OpenShift web-console here: https://console-openshift-console.apps.mycluster.example.com
+                                                                           └──────────────────────────┘
                                                                            This is the apps domain
 ```
 
-**Method B: Using oc CLI**
+**Or using the oc CLI:**
 
 ```bash
 export KUBECONFIG=<KUBECONFIG1>
@@ -141,24 +143,22 @@ oc get ingresses.config cluster -o jsonpath='{.spec.domain}'
 **Expected output:**
 
 ```
-apps.example-cluster1.example.com
+apps.mycluster1.example.com
 ```
 
-**Method C: Using DNS cluster object**
-
-```bash
-echo "apps.$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')"
-```
-
-Repeat for Cluster 2 with `KUBECONFIG2`.
+Repeat for Cluster 2 with `<KUBECONFIG2>`.
 
 ### Step 0.2: Find VPC IDs
 
-1. Go to **AWS Console → EC2 → Instances**
-2. Search for your cluster name
-3. Click any worker instance → **Details** tab → note the **VPC ID**
+Each OpenShift cluster on AWS creates its own VPC. You need the VPC IDs to create RDS in the correct network.
 
-Or via **EC2 → Security Groups** → search for your cluster name → VPC ID is shown in the table.
+**Option A — AWS Console:**
+1. Go to **EC2 → Instances** → search for your cluster name
+2. Click any worker instance → **Details** tab → note the **VPC ID**
+
+**Option B — AWS Console (Security Groups):**
+1. Go to **EC2 → Security Groups** → search for your cluster name
+2. The **VPC ID** column shows the VPC
 
 ### Step 0.3: Find VPC CIDR
 
