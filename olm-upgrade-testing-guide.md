@@ -454,6 +454,105 @@ zero-trust-workload-identity-manager.v1.0.1   Zero Trust Workload Identity Manag
 
 The v1.0.0 CSV is removed and v1.0.1 shows `Succeeded` with `REPLACES` pointing to v1.0.0.
 
+### 4.4 Validate updated CRD definitions (PR #104)
+
+PR [#104](https://github.com/openshift/zero-trust-workload-identity-manager/pull/104) **regenerates** the SPIRE/SPIFFE and related CRDs (spire-controller-manager **0.6.4**). The **API resource names are unchanged**; this checks that the cluster applied the **new CRD YAML** bundled in v1.0.1 (updated OpenAPI), not that new CRD kinds appeared.
+
+**Optional — expected annotation in git (on `controller-manager-0.6.4`):**
+
+```bash
+git checkout controller-manager-0.6.4
+grep controller-gen.kubebuilder.io/version config/crd/bases/clusterspiffeids-spiffe-crd.yaml
+```
+
+```
+    controller-gen.kubebuilder.io/version: v0.19.0
+```
+
+On `release-1.0.0` / older `main`, the same file shows **`v0.11.1`**. After a successful upgrade to a v1.0.1 bundle built from the PR branch, the **live** CRD should match **`v0.19.0`**.
+
+**On the cluster — CRD annotation (quick fingerprint):**
+
+```bash
+oc get crd clusterspiffeids.spire.spiffe.io -o jsonpath='{.metadata.annotations.controller-gen\.kubebuilder\.io/version}{"\n"}'
+```
+
+```
+v0.19.0
+```
+
+**CSV at v1.0.1:**
+
+```bash
+oc get csv -n zero-trust-workload-identity-manager
+```
+
+```
+NAME                                          DISPLAY                                VERSION   REPLACES                                      PHASE
+zero-trust-workload-identity-manager.v1.0.1   Zero Trust Workload Identity Manager   1.0.1     zero-trust-workload-identity-manager.v1.0.0   Succeeded
+```
+
+**APIServer schema (confirms the upgraded CRD’s OpenAPI is what clients see):**
+
+```bash
+oc explain clusterspiffeid.spec --api-version=spire.spiffe.io/v1alpha1 2>/dev/null || oc explain clusterspiffeids.spec
+```
+
+Example (truncated):
+
+```
+GROUP:      spire.spiffe.io
+KIND:       ClusterSPIFFEID
+VERSION:    v1alpha1
+
+FIELD: spec <Object>
+
+DESCRIPTION:
+    ClusterSPIFFEIDSpec defines the desired state of ClusterSPIFFEID
+
+FIELDS:
+  className     <string>
+    Set which Controller Class will act on this object
+...
+```
+
+**OLM audit trail:**
+
+```bash
+oc get subscription -n zero-trust-workload-identity-manager -o wide
+oc get installplan -n zero-trust-workload-identity-manager
+```
+
+```
+NAME                                   PACKAGE                                SOURCE              CHANNEL
+zero-trust-workload-identity-manager   zero-trust-workload-identity-manager   ztwim-test-catalog  stable-v1
+NAME            CSV                                           APPROVAL   APPROVED
+install-xxxxx   zero-trust-workload-identity-manager.v1.0.0   Manual     true
+install-yyyyy   zero-trust-workload-identity-manager.v1.0.1   Manual     true
+```
+
+> The `SOURCE` column matches your CatalogSource `metadata.name` (here `ztwim-test-catalog` from Phase 3). InstallPlan names are cluster-specific.
+
+**Optional — print `controller-gen` for all ZTWIM-related CRDs:**
+
+```bash
+for c in \
+  clusterspiffeids.spire.spiffe.io \
+  clusterstaticentries.spire.spiffe.io \
+  clusterfederatedtrustdomains.spire.spiffe.io \
+  spireservers.operator.openshift.io \
+  spireagents.operator.openshift.io \
+  spireoidcdiscoveryproviders.operator.openshift.io \
+  spiffecsidrivers.operator.openshift.io \
+  zerotrustworkloadidentitymanagers.operator.openshift.io
+do
+  printf '%-55s ' "$c"
+  oc get crd "$c" -o jsonpath='{.metadata.annotations.controller-gen\.kubebuilder\.io/version}{"\n"}' 2>/dev/null || echo "(no controller-gen annotation)"
+done
+```
+
+Some CRDs may omit the annotation; SPIFFE CRDs should show **`v0.19.0`** after the v1.0.1 upgrade when the bundle was built from the PR branch.
+
 ---
 
 ## Phase 5 — Deploy Operands and Verify
@@ -603,6 +702,9 @@ oc create namespace zero-trust-workload-identity-manager
 # Apply CatalogSource, OperatorGroup, Subscription (see Phase 3 above)
 # Approve v1.0.0 InstallPlan
 # Wait for v1.0.1 InstallPlan, approve it
+# Validate upgraded CRDs (see Phase 4.4):
+#   oc get crd clusterspiffeids.spire.spiffe.io -o jsonpath='{.metadata.annotations.controller-gen\.kubebuilder\.io/version}{"\n"}'
+#   oc explain clusterspiffeid.spec --api-version=spire.spiffe.io/v1alpha1
 # Deploy operands with envsubst < fixtures/crds/ztwim-stack.yaml | oc apply -f -
 ```
 
