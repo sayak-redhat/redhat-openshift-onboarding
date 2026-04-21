@@ -566,6 +566,100 @@ spiffecsidrivers.operator.openshift.io                  v0.16.1
 zerotrustworkloadidentitymanagers.operator.openshift.io v0.16.1
 ```
 
+### 4.5 Verify spire-controller-manager **0.6.4** and dependency bumps (PR #104)
+
+Use this after v1.0.1 is **Succeeded** to confirm the **same** bits you built from the PR branch: **spire-controller-manager** image, **Go** / **Kubernetes** / **OpenShift API** pins, and **runtime** workloads.
+
+Run the **git** / **`go`** commands on a checkout of the **PR branch** (e.g. `controller-manager-0.6.4`). Compare against **`origin/main`** (or your PR base) for the dependency diff.
+
+**Module and embedded version string:**
+
+```bash
+git checkout controller-manager-0.6.4   # or your PR branch
+grep spire-controller-manager go.mod
+grep -n SpireControllerManagerVersion pkg/version/version.go
+```
+
+```
+        github.com/spiffe/spire-controller-manager v0.6.4
+16:     SpireControllerManagerVersion     string = "0.6.4"
+```
+
+**Images referenced by the operator (CSV / manager config):**
+
+```bash
+grep -R "spire-controller-manager:0\." bundle/manifests/ config/manager/ 2>/dev/null | head -20
+```
+
+```
+bundle/manifests/zero-trust-workload-identity-manager.clusterserviceversion.yaml:                  value: ghcr.io/spiffe/spire-controller-manager:0.6.4
+bundle/manifests/zero-trust-workload-identity-manager.clusterserviceversion.yaml:  - image: ghcr.io/spiffe/spire-controller-manager:0.6.4
+config/manager/manager.yaml:          value: ghcr.io/spiffe/spire-controller-manager:0.6.4
+```
+
+**Go toolchain and key dependencies:**
+
+```bash
+head -5 go.mod
+grep -E '^\s+k8s\.io/' go.mod | head -20
+grep openshift/api go.mod
+go mod verify
+```
+
+```
+go 1.25.7
+...
+all modules verified
+```
+
+**What changed vs `main` (example — versions drift over time):**
+
+```bash
+git fetch origin main
+git diff origin/main...HEAD -- go.mod go.sum
+```
+
+Expect **`spire-controller-manager`** bumped (e.g. from **`v0.6.2`** on `main` to **`v0.6.4`**), **Go** version raised, **`k8s.io/*`** aligned on a newer minor (e.g. **v0.35.3**), and **`github.com/openshift/api`** pseudo-version updated. Exact numbers depend on the PR base; use the diff as the source of truth.
+
+**On the cluster — OLM and running spire-controller-manager image:**
+
+```bash
+oc get csv -n zero-trust-workload-identity-manager
+oc get pods -n zero-trust-workload-identity-manager -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | grep spire-controller-manager
+```
+
+```
+NAME                                          DISPLAY                                VERSION   REPLACES                                      PHASE
+zero-trust-workload-identity-manager.v1.0.1   Zero Trust Workload Identity Manager   1.0.1     zero-trust-workload-identity-manager.v1.0.0   Succeeded
+ghcr.io/spiffe/spire-controller-manager:0.6.4
+```
+
+**CRD annotations** — use the loops in **§4.4**; SPIFFE CRDs should show **`v0.19.0`**, operator CRDs often **`v0.16.1`**.
+
+**APIServer schema (spot-check):**
+
+```bash
+oc explain clusterspiffeid.spec --api-version=spire.spiffe.io/v1alpha1
+oc explain clusterfederatedtrustdomain.spec --api-version=spire.spiffe.io/v1alpha1
+```
+
+**Optional — raw OpenAPI snippet stored in the CRD:**
+
+```bash
+oc get crd clusterspiffeids.spire.spiffe.io -o jsonpath='{.spec}' | head -c 2000
+```
+
+**Operands healthy (after stack is deployed):**
+
+```bash
+oc get pods -n zero-trust-workload-identity-manager
+oc get spireserver,spireagent,spiffecsidriver,spireoidcdiscoveryprovider -A 2>/dev/null || true
+```
+
+Expect operand **CRs** (e.g. `cluster`) and **Pods** `Running` with expected **READY** counts (see Phase 5).
+
+> **CVE note:** These steps prove **version alignment** in git, manifests, and on-cluster. Mapping a specific **CVE** to **0.6.4** still relies on **product/security advisories** and upstream release notes.
+
 ---
 
 ## Phase 5 — Deploy Operands and Verify
@@ -715,9 +809,11 @@ oc create namespace zero-trust-workload-identity-manager
 # Apply CatalogSource, OperatorGroup, Subscription (see Phase 3 above)
 # Approve v1.0.0 InstallPlan
 # Wait for v1.0.1 InstallPlan, approve it
-# Validate upgraded CRDs (see Phase 4.4):
+# Validate upgraded CRDs (Phase 4.4) + spire-controller-manager / deps (Phase 4.5):
 #   oc get crd clusterspiffeids.spire.spiffe.io -o jsonpath='{.metadata.annotations.controller-gen\.kubebuilder\.io/version}{"\n"}'
 #   oc explain clusterspiffeid.spec --api-version=spire.spiffe.io/v1alpha1
+#   grep spire-controller-manager go.mod; go mod verify; git diff origin/main...HEAD -- go.mod go.sum
+#   oc get csv -n zero-trust-workload-identity-manager; oc get pods ... | grep spire-controller-manager
 # Deploy operands with envsubst < fixtures/crds/ztwim-stack.yaml | oc apply -f -
 ```
 
