@@ -58,27 +58,27 @@ SPIRE Server supports only `sqlite3`, `postgres`, and `mysql`. Among AWS RDS eng
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                         FEDERATION ARCHITECTURE                                   │
-│                                                                                   │
-│  ┌─────────────────────────────────┐    ┌─────────────────────────────────┐       │
-│  │ CLUSTER 1 (VPC-A)               │    │ CLUSTER 2 (VPC-B)               │       │
-│  │                                  │    │                                  │       │
-│  │  Profile: https_spiffe           │    │  Profile: https_web              │       │
-│  │  Cert: Self-signed SPIRE         │    │  Cert: Let's Encrypt             │       │
-│  │                                  │    │  (via cert-manager)              │       │
-│  │  ┌────────────┐                  │    │  ┌────────────┐                  │       │
-│  │  │ SPIRE      │◄────── Federation ────►  │ SPIRE      │                  │       │
-│  │  │ Server     │                  │    │  │ Server     │                  │       │
-│  │  └─────┬──────┘                  │    │  └─────┬──────┘                  │       │
-│  │        │                         │    │        │                         │       │
-│  │        ▼                         │    │        ▼                         │       │
-│  │  ┌────────────┐                  │    │  ┌────────────┐                  │       │
-│  │  │ RDS        │                  │    │  │ RDS        │                  │       │
-│  │  │ PostgreSQL │ (in VPC-A)       │    │  │ PostgreSQL │ (in VPC-B)       │       │
-│  │  └────────────┘                  │    │  └────────────┘                  │       │
-│  └─────────────────────────────────┘    └─────────────────────────────────┘       │
-│                                                                                   │
-│  ◄────────────────────── BIDIRECTIONAL TRUST ──────────────────────►              │
+│                         FEDERATION ARCHITECTURE                                  │
+│                                                                                  │
+│  ┌───────────────────────────────── ┐    ┌────────────────────────────────┐      │
+│  │ CLUSTER 1 (VPC-A)                │    │ CLUSTER 2 (VPC-B)              │      │
+│  │                                  │    │                                │      │
+│  │  Profile: https_spiffe           │    │  Profile: https_web            │      │
+│  │  Cert: Self-signed SPIRE         │    │  Cert: Let's Encrypt           │      │
+│  │                                  │    │  (via cert-manager)            │      │
+│  │  ┌────────────┐                  │    │  ┌────────────┐                │      │
+│  │  │ SPIRE      │◄────── Federation ────►  │ SPIRE      │                │      │
+│  │  │ Server     │                  │    │  │ Server     │                │      │
+│  │  └─────┬──────┘                  │    │  └─────┬──────┘                │      │
+│  │        │                         │    │        │                       │      │
+│  │        ▼                         │    │        ▼                       │      │
+│  │  ┌────────────┐                  │    │  ┌────────────┐                │      |
+│  │  │ RDS        │                  │    │  │ RDS        │                │      |
+│  │  │ PostgreSQL │ (in VPC-A)       │    │  │ PostgreSQL │ (in VPC-B)     │      |
+│  │  └────────────┘                  │    │  └────────────┘                │      │
+│  └─────────────────────────────────┘     |────────────────────────────────┘      │
+│                                                                                  │
+│  ◄────────────────────── BIDIRECTIONAL TRUST ──────────────────────►             │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -103,7 +103,7 @@ SPIRE Server supports only `sqlite3`, `postgres`, and `mysql`. Among AWS RDS eng
 
 ## Phase 0: Discover Cluster Information
 
-Throughout this guide, placeholders like `<CLUSTER1_APP_DOMAIN>` appear in commands. Before you begin, gather these values for your environment using the methods below. The guide also uses shell variables (`${CLUSTER1_APP_DOMAIN}`) — these are set in Phase 3 Step 1 and Phase 4 Step 1.
+Throughout this guide, placeholders like `<CLUSTER1_APP_DOMAIN>` appear in commands. Before you begin, gather these values for your environment using the methods below. The guide also uses shell variables (`${CLUSTER1_APP_DOMAIN}`) — these are set in Step 0.4 at the end of this phase.
 
 ### Placeholders Used in This Guide
 
@@ -160,6 +160,32 @@ Each OpenShift cluster on AWS creates its own VPC. You need the VPC IDs to creat
 1. Go to **EC2 → Security Groups** → search for your cluster name
 2. The **VPC ID** column shows the VPC
 
+**Option C — AWS CLI:**
+
+First, get the infrastructure name for your cluster:
+
+```bash
+export KUBECONFIG=<KUBECONFIG1>
+INFRA_ID=$(oc get infrastructure cluster -o jsonpath='{.status.infrastructureName}')
+echo "Infrastructure ID: $INFRA_ID"
+```
+
+Then query AWS for the VPC tagged by that cluster:
+
+```bash
+aws ec2 describe-vpcs \
+  --filters "Name=tag:kubernetes.io/cluster/${INFRA_ID},Values=owned" \
+  --query "Vpcs[].VpcId" --output text
+```
+
+**Expected output:**
+
+```
+vpc-0abc123def456...
+```
+
+Repeat for Cluster 2 with `<KUBECONFIG2>`.
+
 ### Step 0.3: Find VPC CIDR
 
 ```bash
@@ -177,6 +203,19 @@ ip-10-0-34-242.ec2.internal   Ready    worker                 72m   v1.32.x    1
 ```
 
 All nodes in `10.0.x.x` → VPC CIDR is `10.0.0.0/16`.
+
+### Step 0.4: Set Shell Variables
+
+Set all environment variables now so they are available throughout the guide. Replace every `<...>` placeholder with the values you discovered above.
+
+```bash
+export KUBECONFIG1=<PATH_TO_CLUSTER1_KUBECONFIG>
+export KUBECONFIG2=<PATH_TO_CLUSTER2_KUBECONFIG>
+export CLUSTER1_APP_DOMAIN=<CLUSTER1_APPS_DOMAIN>
+export CLUSTER2_APP_DOMAIN=<CLUSTER2_APPS_DOMAIN>
+```
+
+> **Important:** If you open a new terminal session later, re-run these exports before continuing.
 
 ---
 
@@ -272,39 +311,56 @@ Repeat the same for **`spire-rds-sg-c2`** with the same CIDR.
 
 > **Run all commands in this section against Cluster 1.**
 
-### C1-Step 1: Set Environment
+### C1-Step 1: Switch to Cluster 1
+
+> All variables (`KUBECONFIG1`, `KUBECONFIG2`, `CLUSTER1_APP_DOMAIN`, `CLUSTER2_APP_DOMAIN`) were set in Phase 0 Step 0.4. Here we only switch the kubeconfig context to Cluster 1.
 
 ```bash
-export KUBECONFIG1=<PATH_TO_CLUSTER1_KUBECONFIG>
-export KUBECONFIG2=<PATH_TO_CLUSTER2_KUBECONFIG>
-export CLUSTER1_APP_DOMAIN=<CLUSTER1_APPS_DOMAIN>
-export CLUSTER2_APP_DOMAIN=<CLUSTER2_APPS_DOMAIN>
-
 export KUBECONFIG=$KUBECONFIG1
-oc whoami
+oc whoami --show-console
 ```
 
 **Expected output:**
 
 ```
-system:admin
+https://console-openshift-console.<CLUSTER1_APP_DOMAIN>
+```
+
+> Verify the URL matches **Cluster 1**. Since both clusters may share the same username, `oc whoami --show-console` returns the cluster-specific console URL, confirming you are targeting the correct cluster.
+
+---
+
+### C1-Step 2: Create ZTWIM Namespace
+
+Create the namespace early so it can be used for RDS connectivity tests and the operator installation later.
+
+```bash
+oc apply -f - <<'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zero-trust-workload-identity-manager
+  labels:
+    openshift.io/cluster-monitoring: "true"
+EOF
 ```
 
 ---
 
-### C1-Step 2: Test RDS Connectivity
+### C1-Step 3: Test RDS Connectivity
 
 ```bash
 oc run psql-test --rm -it --restart=Never \
-  --image=registry.access.redhat.com/ubi9/ubi:latest \
-  -n default -- bash -c "
-    dnf install -y postgresql > /dev/null 2>&1
+  --image=registry.redhat.io/rhel9/postgresql-15:latest \
+  -n zero-trust-workload-identity-manager -- bash -c "
     echo '=== Testing connection to RDS 1 ==='
     pg_isready -h <RDS_ENDPOINT_C1> -p 5432 -U postgres
     echo '=== Connecting to RDS 1 ==='
     PGPASSWORD=<RDS_MASTER_PASSWORD> psql 'host=<RDS_ENDPOINT_C1> port=5432 user=postgres dbname=spire sslmode=require' -c 'SELECT version();'
   "
 ```
+
+> **Note:** The `registry.redhat.io/rhel9/postgresql-15` image ships with `psql` and `pg_isready` pre-installed, eliminating the need to install packages at runtime.
 
 **Expected output:**
 
@@ -322,13 +378,12 @@ oc run psql-test --rm -it --restart=Never \
 
 ---
 
-### C1-Step 3: Create SPIRE Database User
+### C1-Step 4: Create SPIRE Database User
 
 ```bash
 oc run psql-setup --rm -it --restart=Never \
-  --image=registry.access.redhat.com/ubi9/ubi:latest \
-  -n default -- bash -c "
-    dnf install -y postgresql > /dev/null 2>&1
+  --image=registry.redhat.io/rhel9/postgresql-15:latest \
+  -n zero-trust-workload-identity-manager -- bash -c "
     PGPASSWORD=<RDS_MASTER_PASSWORD> psql 'host=<RDS_ENDPOINT_C1> port=5432 user=postgres dbname=spire sslmode=require' <<'SQL'
 CREATE USER spire_server WITH PASSWORD '<SPIRE_USER_PASSWORD>';
 GRANT CONNECT ON DATABASE spire TO spire_server;
@@ -374,17 +429,12 @@ GRANT
 
 ---
 
-### C1-Step 4: Install ZTWIM Operator
+### C1-Step 5: Install ZTWIM Operator
+
+> The `zero-trust-workload-identity-manager` namespace was already created in C1-Step 2.
 
 ```bash
 cat <<'EOF' | oc apply -f -
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: zero-trust-workload-identity-manager
-  labels:
-    openshift.io/cluster-monitoring: "true"
 ---
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
@@ -432,7 +482,7 @@ zero-trust-workload-identity-manager-controller-manager-xxxxx      1/1     Runni
 
 ---
 
-### C1-Step 5: Deploy SPIRE Stack (https_spiffe + RDS PostgreSQL)
+### C1-Step 6: Deploy SPIRE Stack (https_spiffe + RDS PostgreSQL)
 
 ```bash
 oc apply -f - <<EOF
@@ -531,7 +581,7 @@ spire-oidc-discovery-provider   oidc-discovery.<CLUSTER1_APP_DOMAIN>          sp
 
 ---
 
-### C1-Step 6: Verify SPIRE is Using RDS
+### C1-Step 7: Verify SPIRE is Using RDS
 
 ```bash
 oc logs spire-server-0 -c spire-server -n zero-trust-workload-identity-manager 2>/dev/null | grep -i "sql\|datastore\|postgres\|database" | head -10
@@ -550,7 +600,7 @@ time="..." level=info msg="Configured DataStore" reconfigurable=false subsystem_
 
 ---
 
-### C1-Step 7: Verify Federation (run AFTER Phase 4 is complete)
+### C1-Step 8: Verify Federation (run AFTER Phase 4 is complete)
 
 ```bash
 echo "=== Cluster 1 - Bundle List ==="
@@ -579,7 +629,7 @@ curl -sk -o /dev/null -w "HTTP %{http_code}\n" "https://federation.${CLUSTER1_AP
 
 ---
 
-### C1-Step 8: Deploy mTLS Server (run AFTER Phase 5)
+### C1-Step 9: Deploy mTLS Server (run AFTER Phase 5)
 
 ```bash
 oc create namespace federation-test --dry-run=client -o yaml | oc apply -f -
@@ -738,7 +788,7 @@ mtls-server   2/2     Running   0          30s
 
 ---
 
-### C1-Step 9: Verify Server SPIFFE ID
+### C1-Step 10: Verify Server SPIFFE ID
 
 ```bash
 echo "Server SPIFFE ID:"
@@ -761,29 +811,48 @@ oc exec -n federation-test mtls-server -c server -- \
 
 > **Run all commands in this section against Cluster 2.**
 
-### C2-Step 1: Set Environment
+### C2-Step 1: Switch to Cluster 2
+
+> All variables were set in Phase 0 Step 0.4. Here we only switch the kubeconfig context to Cluster 2.
 
 ```bash
-export KUBECONFIG1=<PATH_TO_CLUSTER1_KUBECONFIG>
-export KUBECONFIG2=<PATH_TO_CLUSTER2_KUBECONFIG>
-export CLUSTER1_APP_DOMAIN=<CLUSTER1_APPS_DOMAIN>
-export CLUSTER2_APP_DOMAIN=<CLUSTER2_APPS_DOMAIN>
-
 export KUBECONFIG=$KUBECONFIG2
-oc whoami
+oc whoami --show-console
 ```
 
-**Expected output:** `system:admin`
+**Expected output:**
+
+```
+https://console-openshift-console.<CLUSTER2_APP_DOMAIN>
+```
+
+> Verify the URL matches **Cluster 2**.
 
 ---
 
-### C2-Step 2: Test RDS Connectivity
+### C2-Step 2: Create ZTWIM Namespace
+
+Create the namespace early so it can be used for RDS connectivity tests and the operator installation later.
+
+```bash
+oc apply -f - <<'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zero-trust-workload-identity-manager
+  labels:
+    openshift.io/cluster-monitoring: "true"
+EOF
+```
+
+---
+
+### C2-Step 3: Test RDS Connectivity
 
 ```bash
 oc run psql-test --rm -it --restart=Never \
-  --image=registry.access.redhat.com/ubi9/ubi:latest \
-  -n default -- bash -c "
-    dnf install -y postgresql > /dev/null 2>&1
+  --image=registry.redhat.io/rhel9/postgresql-15:latest \
+  -n zero-trust-workload-identity-manager -- bash -c "
     echo '=== Testing connection to RDS 2 ==='
     pg_isready -h <RDS_ENDPOINT_C2> -p 5432 -U postgres
     echo '=== Connecting to RDS 2 ==='
@@ -805,13 +874,12 @@ oc run psql-test --rm -it --restart=Never \
 
 ---
 
-### C2-Step 3: Create SPIRE Database User
+### C2-Step 4: Create SPIRE Database User
 
 ```bash
 oc run psql-setup --rm -it --restart=Never \
-  --image=registry.access.redhat.com/ubi9/ubi:latest \
-  -n default -- bash -c "
-    dnf install -y postgresql > /dev/null 2>&1
+  --image=registry.redhat.io/rhel9/postgresql-15:latest \
+  -n zero-trust-workload-identity-manager -- bash -c "
     PGPASSWORD=<RDS_MASTER_PASSWORD> psql 'host=<RDS_ENDPOINT_C2> port=5432 user=postgres dbname=spire sslmode=require' <<'SQL'
 CREATE USER spire_server WITH PASSWORD '<SPIRE_USER_PASSWORD>';
 GRANT CONNECT ON DATABASE spire TO spire_server;
@@ -826,21 +894,16 @@ SQL
   "
 ```
 
-**Expected output:** Same as C1-Step 3 (`CREATE ROLE`, `GRANT` x6, user listed).
+**Expected output:** Same as C1-Step 4 (`CREATE ROLE`, `GRANT` x6, user listed).
 
 ---
 
-### C2-Step 4: Install ZTWIM Operator
+### C2-Step 5: Install ZTWIM Operator
+
+> The `zero-trust-workload-identity-manager` namespace was already created in C2-Step 2.
 
 ```bash
 cat <<'EOF' | oc apply -f -
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: zero-trust-workload-identity-manager
-  labels:
-    openshift.io/cluster-monitoring: "true"
 ---
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
@@ -879,7 +942,7 @@ oc get pods -n zero-trust-workload-identity-manager
 
 ---
 
-### C2-Step 5: Deploy SPIRE Stack (https_web + RDS PostgreSQL)
+### C2-Step 6: Deploy SPIRE Stack (https_web + RDS PostgreSQL)
 
 ```bash
 oc apply -f - <<EOF
@@ -966,7 +1029,7 @@ oc get routes -n zero-trust-workload-identity-manager
 
 ---
 
-### C2-Step 6: Verify SPIRE is Using RDS
+### C2-Step 7: Verify SPIRE is Using RDS
 
 ```bash
 oc logs spire-server-0 -c spire-server -n zero-trust-workload-identity-manager 2>/dev/null | grep -i "sql\|datastore\|postgres\|database" | head -10
@@ -976,7 +1039,7 @@ oc logs spire-server-0 -c spire-server -n zero-trust-workload-identity-manager 2
 
 ---
 
-### C2-Step 7: Install cert-manager
+### C2-Step 8: Install cert-manager
 
 ```bash
 oc create namespace cert-manager-operator --dry-run=client -o yaml | oc apply -f -
@@ -1029,7 +1092,7 @@ cert-manager-webhook-xxxxx                1/1     Running   0          45s
 
 ---
 
-### C2-Step 8: Create ACME Issuer (Let's Encrypt)
+### C2-Step 9: Create ACME Issuer (Let's Encrypt)
 
 This registers an account with Let's Encrypt and configures HTTP-01 challenge validation.
 
@@ -1065,7 +1128,7 @@ letsencrypt-http01   True    10s
 
 ---
 
-### C2-Step 9: Create Certificate and RBAC
+### C2-Step 10: Create Certificate and RBAC
 
 This requests a publicly trusted certificate for the federation endpoint from Let's Encrypt.
 
@@ -1126,7 +1189,7 @@ spire-server-federation-tls   True    spire-server-federation-tls   60s
 
 ---
 
-### C2-Step 10: Patch SpireServer to Use Certificate
+### C2-Step 11: Patch SpireServer to Use Certificate
 
 This tells SPIRE to use the Let's Encrypt certificate for its federation endpoint.
 
@@ -1149,7 +1212,7 @@ oc get spireserver cluster -o jsonpath='{.spec.federation.bundleEndpoint.httpsWe
 
 ---
 
-### C2-Step 11: Verify Federation (run AFTER Phase 5)
+### C2-Step 12: Verify Federation (run AFTER Phase 5)
 
 ```bash
 echo "=== Cluster 2 - Bundle List ==="
@@ -1157,7 +1220,17 @@ oc -n zero-trust-workload-identity-manager exec spire-server-0 -c spire-server -
   /spire-server bundle list -socketPath /tmp/spire-server/private/api.sock
 ```
 
-**Expected:** Shows Cluster 1's trust domain and certificate.
+**Expected output:**
+
+```
+=== Cluster 2 - Bundle List ===
+****************************************
+* <CLUSTER1_APP_DOMAIN>
+****************************************
+-----BEGIN CERTIFICATE-----
+...certificate data...
+-----END CERTIFICATE-----
+```
 
 ```bash
 echo "Cluster 2 federation endpoint:"
@@ -1168,7 +1241,7 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" "https://federation.${CLUSTER2_APP
 
 ---
 
-### C2-Step 12: Deploy mTLS Client (run AFTER Phase 5)
+### C2-Step 13: Deploy mTLS Client (run AFTER Phase 5)
 
 ```bash
 oc create namespace federation-test --dry-run=client -o yaml | oc apply -f -
@@ -1286,7 +1359,7 @@ mtls-client   2/2     Running   0          15s
 
 ---
 
-### C2-Step 13: Verify Client SPIFFE ID
+### C2-Step 14: Verify Client SPIFFE ID
 
 ```bash
 echo "Client SPIFFE ID:"
@@ -1493,9 +1566,8 @@ You can inspect what SPIRE stored in the database.
 
 ```bash
 oc run psql-check --rm -it --restart=Never \
-  --image=registry.access.redhat.com/ubi9/ubi:latest \
-  -n default -- bash -c "
-    dnf install -y postgresql > /dev/null 2>&1
+  --image=registry.redhat.io/rhel9/postgresql-15:latest \
+  -n zero-trust-workload-identity-manager -- bash -c "
     PGPASSWORD=<SPIRE_USER_PASSWORD> psql 'host=<RDS_ENDPOINT_C1> port=5432 user=spire_server dbname=spire sslmode=require' <<'SQL'
 \dt
 SELECT COUNT(*) AS registration_entries FROM registered_entries;
@@ -1528,18 +1600,18 @@ Same command with `<RDS_ENDPOINT_C2>`. Cluster 2 will show more entries (7+) bec
 
 | Order | Where to Run | Steps | What It Does |
 |-------|-------------|-------|-------------|
-| 1 | Local machine | Phase 0 | Discover domains, VPCs, CIDR |
+| 1 | Local machine | Phase 0 | Discover domains, VPCs, CIDR, set variables |
 | 2 | AWS Console | Phase 1 | Create two RDS PostgreSQL instances |
 | 3 | AWS Console | Phase 2 | Add security group inbound rules |
-| 4 | Cluster 1 terminal | C1-Step 1 → C1-Step 6 | RDS test, DB user, ZTWIM, SPIRE stack |
-| 5 | Cluster 2 terminal | C2-Step 1 → C2-Step 10 | RDS test, DB user, ZTWIM, SPIRE, cert-manager, certificate |
+| 4 | Cluster 1 terminal | C1-Step 1 → C1-Step 7 | Namespace, RDS test, DB user, ZTWIM, SPIRE stack |
+| 5 | Cluster 2 terminal | C2-Step 1 → C2-Step 11 | Namespace, RDS test, DB user, ZTWIM, SPIRE, cert-manager, certificate |
 | 6 | Either terminal | LOCAL-Step 1 | Fetch trust bundles |
 | 7 | Cluster 1 terminal | LOCAL-Step 2 | Create federation trust on Cluster 1 |
 | 8 | Cluster 2 terminal | LOCAL-Step 3 | Create federation trust on Cluster 2 |
-| 9 | Cluster 1 terminal | C1-Step 7 | Verify federation on Cluster 1 |
-| 10 | Cluster 2 terminal | C2-Step 11 | Verify federation on Cluster 2 |
-| 11 | Cluster 1 terminal | C1-Step 8 → C1-Step 9 | Deploy mTLS server |
-| 12 | Cluster 2 terminal | C2-Step 12 → C2-Step 13 | Deploy mTLS client |
+| 9 | Cluster 1 terminal | C1-Step 8 | Verify federation on Cluster 1 |
+| 10 | Cluster 2 terminal | C2-Step 12 | Verify federation on Cluster 2 |
+| 11 | Cluster 1 terminal | C1-Step 9 → C1-Step 10 | Deploy mTLS server |
+| 12 | Cluster 2 terminal | C2-Step 13 → C2-Step 14 | Deploy mTLS client |
 | 13 | Cluster 2 terminal | LOCAL-Step 4 → LOCAL-Step 6 | Combined bundle + mTLS test |
 | 14 | Either terminal | Phase 7 (optional) | Verify data in RDS |
 
@@ -1610,7 +1682,9 @@ verify error:num=19:self-signed certificate in certificate chain
 
 ## Cleanup
 
-### Delete OpenShift Resources
+> **Partial vs. Full Cleanup:** If you only want to remove the mTLS test workloads while keeping the SPIRE infrastructure, run Step 1 only. For a complete teardown of everything created by this guide (including operators), run all steps in order.
+
+### Step 1: Delete Test Workloads
 
 ```bash
 # Cluster 1
@@ -1626,11 +1700,92 @@ oc delete clusterspiffeid mtls-client-workload
 oc delete clusterfederatedtrustdomain cluster-21-federation
 ```
 
-### Delete AWS Resources
+### Step 2: Delete SPIRE Stack (Both Clusters)
+
+Run on **Cluster 1**:
+
+```bash
+export KUBECONFIG=$KUBECONFIG1
+oc delete spireoidcdiscoveryprovider cluster
+oc delete spiffecsidrivers cluster
+oc delete spireagent cluster
+oc delete spireserver cluster
+oc delete zerotrustworkloadidentitymanager cluster
+```
+
+Run on **Cluster 2**:
+
+```bash
+export KUBECONFIG=$KUBECONFIG2
+oc delete spireoidcdiscoveryprovider cluster
+oc delete spiffecsidrivers cluster
+oc delete spireagent cluster
+oc delete spireserver cluster
+oc delete zerotrustworkloadidentitymanager cluster
+```
+
+### Step 3: Uninstall cert-manager (Cluster 2 Only)
+
+```bash
+export KUBECONFIG=$KUBECONFIG2
+
+# Delete the certificate and issuer created in this guide
+oc delete certificate spire-server-federation-tls -n zero-trust-workload-identity-manager
+oc delete issuer letsencrypt-http01 -n zero-trust-workload-identity-manager
+
+# Delete the RBAC created for the serving cert
+oc delete rolebinding secret-reader-binding -n zero-trust-workload-identity-manager
+oc delete role secret-reader -n zero-trust-workload-identity-manager
+
+# Uninstall the cert-manager operator
+oc delete subscription openshift-cert-manager-operator -n cert-manager-operator
+CSV=$(oc get csv -n cert-manager-operator -o name | grep cert-manager)
+oc delete "$CSV" -n cert-manager-operator
+oc delete namespace cert-manager-operator
+oc delete namespace cert-manager
+```
+
+### Step 4: Uninstall ZTWIM Operator (Both Clusters)
+
+Run on **Cluster 1**:
+
+```bash
+export KUBECONFIG=$KUBECONFIG1
+oc delete subscription openshift-zero-trust-workload-identity-manager -n zero-trust-workload-identity-manager
+CSV=$(oc get csv -n zero-trust-workload-identity-manager -o name | grep zero-trust)
+oc delete "$CSV" -n zero-trust-workload-identity-manager
+oc delete operatorgroup zero-trust-workload-identity-manager-og -n zero-trust-workload-identity-manager
+oc delete namespace zero-trust-workload-identity-manager
+```
+
+Run on **Cluster 2**:
+
+```bash
+export KUBECONFIG=$KUBECONFIG2
+oc delete subscription openshift-zero-trust-workload-identity-manager -n zero-trust-workload-identity-manager
+CSV=$(oc get csv -n zero-trust-workload-identity-manager -o name | grep zero-trust)
+oc delete "$CSV" -n zero-trust-workload-identity-manager
+oc delete operatorgroup zero-trust-workload-identity-manager-og -n zero-trust-workload-identity-manager
+oc delete namespace zero-trust-workload-identity-manager
+```
+
+### Step 5: Delete AWS Resources
 
 1. **RDS → Databases** → Delete `spire-ds1` and `spire-ds2` (uncheck "Create final snapshot")
 2. **EC2 → Security Groups** → Delete `spire-rds-sg` and `spire-rds-sg-c2`
 3. **RDS → Subnet groups** → Delete any subnet groups created for this test
+
+Or via the AWS CLI:
+
+```bash
+# Delete RDS instances (skip final snapshot)
+aws rds delete-db-instance --db-instance-identifier spire-ds1 --skip-final-snapshot
+aws rds delete-db-instance --db-instance-identifier spire-ds2 --skip-final-snapshot
+
+# Wait for deletion to complete (5-10 minutes), then delete security groups
+# aws ec2 delete-security-group --group-id <spire-rds-sg-id>
+# aws ec2 delete-security-group --group-id <spire-rds-sg-c2-id>
+```
 
 ---
 
